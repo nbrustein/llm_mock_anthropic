@@ -62,6 +62,32 @@ if you prefer.
 
 ### Example: a streamed tutor turn that ends by calling a tool
 
+Say the code under test streams a reply and finishes when the model calls a
+`complete` tool — it calls `messages.stream`, renders the incremental text, then
+inspects the final message:
+
+```ruby
+class TutorTurn
+  def run(client, conversation)
+    stream = client.messages.stream(
+      model: "claude-sonnet-4-5",
+      max_tokens: 1024,
+      messages: conversation,
+      tools: [ complete_tool ],
+    )
+
+    stream.text.each {|chunk| broadcast(chunk) } # render text as it arrives
+
+    stream.accumulated_message.content.each do |block|
+      finish! if block.type == :tool_use && block.name == "complete"
+    end
+  end
+end
+```
+
+In a test, return a fake stream so that code runs without the network — one text
+chunk plus a final message that includes the `complete` tool call:
+
 ```ruby
 fake = LlmMock::Anthropic.stream(
   text_chunks: [ "Here's the core idea. " ],
@@ -73,8 +99,8 @@ fake = LlmMock::Anthropic.stream(
 allow(client.messages).to receive(:stream).and_return(fake)
 ```
 
-Your code reads `fake.text` (the chunks) and `fake.accumulated_message.content`
-(the final blocks) exactly as it would a real stream.
+`stream.text` yields the chunks and `stream.accumulated_message.content` is the
+final block list — exactly the surface `TutorTurn#run` reads from a real stream.
 
 ## For tool authors
 
